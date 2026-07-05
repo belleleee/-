@@ -1,0 +1,44 @@
+[
+  {
+    "category": "数据合规风险",
+    "subtype": "跨境数据传输",
+    "severity": "low",
+    "suggestion": "建议梳理数据出境场景、数据类型和接收方，建立跨境传输台账与审批机制。"
+  },
+  {
+    "category": "数据合规风险",
+    "subtype": "跨境数据传输",
+    "severity": "high",
+    "suggestion": "建议立即开展数据出境合规评估，补齐标准合同、敏感数据分级和跨境传输最小化控制。"
+  },
+  {
+    "category": "算法安全风险",
+    "subtype": "算法黑箱",
+    "severity": "medium",
+    "suggestion": "建议补充模型可解释性文档、人工申诉机制和关键决策留痕。"
+  },
+  {
+    "category": "算法安全风险",
+    "subtype": "算法歧视",
+    "severity": "high",
+    "suggestion": "建议对训练数据和规则开展公平性审计，并建立高风险策略复核流程。"
+  },
+  {
+    "category": "科技伦理风险",
+    "subtype": "透明度不足",
+    "severity": "medium",
+    "suggestion": "建议明确告知用户模型作用边界、关键决策依据与人工干预入口。"
+  },
+  {
+    "category": "知识产权风险",
+    "subtype": "专利侵权",
+    "severity": "high",
+    "suggestion": "建议立即开展 FTO 检索和侵权排查，评估规避设计与授权谈判路径。"
+  },
+  {
+    "category": "地缘博弈风险",
+    "subtype": "出海合规壁垒",
+    "severity": "low",
+    "suggestion": "建议建立目标市场法规清单，按国家梳理数据、出口和行业准入要求。"
+  }
+]
