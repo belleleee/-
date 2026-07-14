@@ -1,4 +1,33 @@
-"""Independent confidence evaluation for Risk-HiMATE."""
+"""Independent confidence evaluation for Risk-HiMATE.
+
+This module implements the project-specific confidence layer that sits
+between reflection/revision and verifier.
+
+Design note:
+- The confidence layer is informed by TrustLLM-style trustworthy-AI
+  dimensions, but it does not directly copy TrustLLM's raw metrics.
+- Instead, Risk-HiMATE remaps those ideas into a multi-agent risk
+  identification setting:
+  1. signal_strength:
+     reflects how strong and direct the matched evidence is. This loosely
+     corresponds to transparency / observability of the evidence signal.
+  2. robustness:
+     reflects completeness of evidence, rationale, legal basis, and context.
+     This loosely corresponds to data quality, traceability, and document
+     completeness.
+  3. cross_agent_consistency:
+     measures whether reflection/revision converges and whether different
+     agents disagree on the same fact. This is a Risk-HiMATE-specific
+     extension rather than a direct TrustLLM dimension.
+  4. gate_flags:
+     privacy / legality and ethics / fairness are treated as binary redline
+     gates for verifier, rather than averaged into the continuous confidence
+     score.
+
+So the final design separates:
+- continuous confidence: "is this finding stable enough?"
+- binary gate checks: "does this finding touch governance redlines?"
+"""
 
 from __future__ import annotations
 

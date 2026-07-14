@@ -48,6 +48,8 @@ risk_himate/
   文本切块逻辑
 - `analysis.py`
   打分和聚合辅助函数
+- `confidence.py`
+  独立置信度评估层，负责连续置信度分与二元红线 gate
 - `reporting.py`
   报告生成逻辑
 
@@ -146,7 +148,39 @@ python3 -m risk_himate.app.main \
 
 如果加上 `--report-only`，只输出 `report`。
 
-## 5. 当前这个包的定位
+## 5. 独立置信度层
+
+当前实现里，`confidence` 不是由 `Verifier` 单独主观判断出来的，而是先经过一个独立的置信度评估模块：
+
+- 位置：
+  [confidence.py](/Users/belle/projects/挑战杯/risk_himate/app/core/confidence.py)
+- 状态字段：
+  [schemas.py](/Users/belle/projects/挑战杯/risk_himate/app/core/schemas.py) 中的 `ConfidenceResult`、`GateFlags`、`PipelineState.confidence_result`
+
+这一层的设计参考了 TrustLLM 一类可信 AI 评估框架，但没有直接照搬其原始指标，而是重组为更适合多智能体风险识别任务的三类连续指标：
+
+1. `signal_strength`
+   评估信号词是否强、证据是否直接、风险触发是否清晰。
+2. `robustness`
+   评估证据链是否完整、法律依据是否齐全、chunk 与 rationale 是否足够支撑判断。
+3. `cross_agent_consistency`
+   评估多个 agent 是否对同一事实收敛，reflection / revision 后是否仍存在明显分歧。
+
+同时，隐私/合法性与伦理/公平性问题不进入连续平均，而是单独作为 verifier 的二元红线 gate：
+
+- `privacy_legality_redline`
+- `ethics_fairness_redline`
+
+因此系统中实际存在两层判断：
+
+- 连续置信度：
+  回答“这条风险识别稳不稳”
+- 二元 redline gate：
+  回答“即使稳，有没有触碰治理红线”
+
+`Verifier` 在 [verifier_agent.py](/Users/belle/projects/挑战杯/risk_himate/app/agents/verifier_agent.py) 中消费这层结果，而不是自己重新生成一套独立置信度。
+
+## 6. 当前这个包的定位
 
 这个实现当前最适合：
 
@@ -157,7 +191,7 @@ python3 -m risk_himate.app.main \
 
 它还不算生产级系统，但已经具备清晰的结构、可测性和可扩展性。
 
-## 6. 这个包里最需要继续改进的点
+## 7. 这个包里最需要继续改进的点
 
 如果你接下来还要继续开发，这几个方向优先级最高：
 
@@ -184,6 +218,15 @@ python3 -m risk_himate.app.main \
 - 面向前端的轻量中间结果 schema
 - 更好的人类可读 summary
 
+### 置信度标定
+
+当前 `confidence.py` 已经把置信度从 verifier 中拆出来，但它仍然是启发式评分，不是经过标注数据校准后的统计模型。后续建议继续做：
+
+- 用真实案例标定 `signal_strength / robustness / cross_agent_consistency` 的权重
+- 明确哪些 TrustLLM 维度进入连续分，哪些必须保留为二元 gate
+- 为不同风险类别建立不同的置信度阈值
+- 在报告中补充更细的“低置信度原因”解释
+
 ### PDF 输入
 
 当前包还没有 `--pdf` 原生参数。后续如果继续做，优先级很高，因为实际企业材料很多都是 PDF。
@@ -192,7 +235,7 @@ python3 -m risk_himate.app.main \
 
 `company_name` 路径已经有 collector 骨架，但还需要更完整的外部 API 字段映射和证据去重。
 
-## 7. 测试
+## 8. 测试
 
 运行测试：
 

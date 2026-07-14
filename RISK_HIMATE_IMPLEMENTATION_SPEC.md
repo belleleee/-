@@ -259,6 +259,67 @@ class ReflectionResult(BaseModel):
     summary: str
 ```
 
+### 6.6 独立置信度评估输出
+
+这一层用于回答“风险识别结果稳不稳”，它不等同于 verifier 的最终 accept/reject 判断。
+
+建议在 reflection / revision 之后，单独产出：
+
+```python
+class GateFlags(BaseModel):
+    privacy_legality_redline: bool = False
+    ethics_fairness_redline: bool = False
+    triggered_reasons: list[str] = Field(default_factory=list)
+
+
+class ConfidenceResult(BaseModel):
+    confidence_score: float
+    signal_strength: float
+    robustness: float
+    cross_agent_consistency: float
+    disagreement_flags: list[str] = Field(default_factory=list)
+    gate_flags: GateFlags = Field(default_factory=GateFlags)
+    summary: str = ""
+```
+
+这里的思想参考 TrustLLM 一类可信 AI 评估框架，但不直接复用其原始指标，而是重组为适配多智能体风险识别任务的三类连续指标：
+
+1. `signal_strength`
+   对应强弱信号、证据直接性、可观察性。
+2. `robustness`
+   对应证据链完整性、上下文充足性、可追溯性。
+3. `cross_agent_consistency`
+   对应多 agent 是否收敛。这是本项目相对 TrustLLM 的任务特化扩展。
+
+而隐私/合法性、伦理/公平性这两类不进入连续平均，而是作为 verifier 的二元 gate 单独判断。
+
+因此系统实际形成两层判断：
+
+1. 连续置信度：
+   回答“识别结果稳不稳”
+2. 二元 gate：
+   回答“有没有碰治理红线”
+
+这两层逻辑不能混成一个分数。
+
+### 6.7 PipelineState 增补建议
+
+```python
+class PipelineState(BaseModel):
+    ...
+    reflection_result: ReflectionResult | None = None
+    revised_findings: dict[str, list[RiskFinding]] = Field(default_factory=dict)
+    confidence_result: ConfidenceResult | None = None
+    verification_result: VerificationResult | None = None
+    ...
+```
+
+这样在系统图、调试输出和正式报告里，都能显式回答：
+
+- 置信度是哪个模块算出来的
+- verifier 使用了哪些输入
+- gate 是如何与连续分分离的
+
 ### 6.6 核验输出
 
 ```python

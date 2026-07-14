@@ -13,6 +13,9 @@ venv/
 .env.*
 
 risk_himate/output/*.json
+risk_himate/output/*.docx
+risk_himate/output/*.md
+risk_himate/output/*.rtf
 !risk_himate/output/.gitkeep
 
 *.sqlite
