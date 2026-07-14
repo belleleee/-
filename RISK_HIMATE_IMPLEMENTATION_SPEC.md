@@ -1,5 +1,16 @@
 # Risk-HiMATE 改造实施说明
 
+## 0. 当前实现状态
+
+这份文档最初是“从 HiMATE 迁移到 Risk-HiMATE”的实施设计稿。当前仓库已经完成了核心原型落地，因此阅读时需要按下面这个口径理解：
+
+1. `HiMATE-main/` 仍然保留，作为论文参考实现。
+2. `risk_himate/` 已经是当前真正可运行的项目主体。
+3. 当前工作流已经是 **LangGraph-native** 架构，而不是只停留在“后续准备迁移”的阶段。
+4. 同时，为了保证未安装 `langgraph` 的环境也能跑通，执行层仍保留了顺序 fallback，但节点划分、状态对象和阶段边界已经按 LangGraph 方式组织。
+
+也就是说，这份文档既保留最初的设计思路，也补充说明当前代码已经实现到什么程度。
+
 ## 1. 目标
 
 把当前仓库中的 `HiMATE-main` 从“机器翻译错误评估框架”改造成“科创企业特有风险识别智能体（Risk-HiMATE）”原型系统，并保留 HiMATE 的核心方法论：
@@ -80,7 +91,14 @@
 
 ## 4. 新系统目标架构
 
-建议新建如下目录：
+当前仓库中的 `risk_himate/` 已经基本按下面这套结构落地。早期设计稿中的少量文件名和当前实现略有差异，例如：
+
+1. 五类领域 Agent 目前集中在 `domain_agents.py` 中实现，而不是拆成五个单文件。
+2. `report_agent.py` 没有单独存在，报告整合逻辑当前位于 `core/reporting.py`。
+3. 当前已经增加了 `core/confidence.py`，用于独立置信度评估。
+4. 当前已经增加了 `workflows/state_graph.py`，作为真正的 LangGraph-native 工作流定义。
+
+设计目标目录如下：
 
 ```text
 risk_himate/
@@ -471,48 +489,59 @@ class RiskReport(BaseModel):
 2. prompt 目录管理方式
 3. 调用模型与日志记录分层
 
-### 8.3 推荐迁移方式
+### 8.3 当前迁移结果
 
-1. 把原始 `HiMATE-main` 当论文参考实现保留
-2. 在新目录 `risk_himate/` 中重建
-3. 第一步先写同步版 pipeline
-4. 第二步再用 LangGraph 重构成状态图
+这一步目前已经完成到以下状态：
 
-原因是：先跑通业务闭环，再追求图式编排，风险更小。
+1. 原始 `HiMATE-main` 已保留为论文参考实现。
+2. 新目录 `risk_himate/` 已作为独立项目主体落成。
+3. 同步版 pipeline 已完成，并对外保留稳定入口。
+4. LangGraph 状态图版本也已经落地，当前真正的工作流定义位于 `risk_himate/app/workflows/state_graph.py`。
+
+因此，当前系统不是“未来再接 LangGraph”，而是已经完成了：
+
+1. 统一 `PipelineState`
+2. 节点式阶段划分
+3. 条件分支路由
+4. LangGraph 缺失时的兼容 fallback
+
+原因也很清楚：前期先跑通业务闭环，后期再把已经稳定的阶段逻辑映射成图式编排。现在这个阶段已经走完了。
 
 ---
 
 ## 9. LangChain / LangGraph 落地建议
 
-### 9.1 最小可行版本
+### 9.1 当前落地原则
 
-先用“可测试的普通 Python service + LLM client”完成业务逻辑，不必第一天就深度依赖 LangChain。
+当前实现已经按下面的分层落地：
 
-推荐：
+1. `Pydantic` 负责 schema 与状态对象
+2. prompt 模板集中在 `risk_himate/app/llm/prompts/`
+3. `pipeline.py` 对外暴露稳定 API
+4. `state_graph.py` 负责 LangGraph-native 的节点、边和条件分支编排
 
-1. `Pydantic` 负责 schema
-2. `langchain_core` 负责 prompt template 与结构化输出
-3. `LangGraph` 只负责阶段编排
+也就是说，现在不是“是否要深度依赖 LangGraph”的讨论阶段，而是“已经完成 LangGraph-native 化，同时保留兼容执行器”的阶段。
 
 ### 9.2 Graph 节点建议
 
 ```text
-load_input
-  -> normalize_input
-  -> chunk_text
+prepare
   -> triage
-  -> parallel_domain_agents
-  -> reflect
-  -> revise
-  -> verify
-  -> score_and_recommend
-  -> persist_history
-  -> emit_report
+  -> domain_analysis
+  -> reflection
+  -> revision
+  -> confidence
+  -> verifier
+  -> human_review
+  -> finalize
+  -> report
 ```
+
+当前代码里，上述节点已经映射为明确的阶段函数，并由 `StateGraph` 组织。
 
 ### 9.3 状态对象
 
-建议定义统一 `PipelineState`：
+当前已经定义统一 `PipelineState`，它承担 LangGraph 节点间的状态传递。概念上可以理解为：
 
 ```python
 class PipelineState(TypedDict, total=False):
@@ -526,6 +555,16 @@ class PipelineState(TypedDict, total=False):
     final_findings: list[RiskFinding]
     report: RiskReport
 ```
+
+在实际代码中，`PipelineState` 已进一步扩展，包含：
+
+1. `confidence_result`
+2. `verifier_result`
+3. `human_review_items`
+4. `risk_report`
+5. 其他调试与中间阶段字段
+
+这也是当前系统能做到“LangGraph-native，但又能保留详细 debug 输出”的关键基础。
 
 ---
 

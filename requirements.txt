@@ -1,1 +1,2 @@
 pydantic>=2.7,<3
+langgraph==1.2.9

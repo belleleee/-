@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from datetime import datetime, UTC
+from typing import Any
 
 from risk_himate.app.agents.domain_agents import (
     AlgorithmSafetyAgent,
@@ -29,6 +31,7 @@ from risk_himate.app.core.taxonomy import CATEGORY_PROPAGATION_MAP
 from risk_himate.app.llm.client import OpenAICompatibleLLMClient
 from risk_himate.app.rag.recommendation_store import LocalRecommendationStore, RecommendationStore
 from risk_himate.app.storage.history_store import HistoryStore, NullHistoryStore, compute_trend
+from risk_himate.app.workflows.state_graph import RiskHiMATEStateGraph
 
 
 class RiskHiMATEPipeline:
@@ -57,36 +60,112 @@ class RiskHiMATEPipeline:
         self.company_data_collector = company_data_collector or ExternalCompanyDataCollector.from_env(
             fallback_collector=LocalCompanyDataCollector()
         )
+        self.workflow = RiskHiMATEStateGraph(self)
+        self.compiled_workflow = self.workflow.compile()
+        self.workflow_backend = self.workflow.backend
 
     def run_state(self, analysis_input: AnalysisInput) -> PipelineState:
-        analysis_input = self._normalize_input(analysis_input)
-        if not analysis_input.raw_text:
-            raise ValueError("Analysis input must include raw_text after normalization.")
-
-        timestamp = datetime.now(UTC).isoformat()
-        chunks = chunk_text(analysis_input.raw_text)
-        chunks_by_id = {chunk.chunk_id: chunk for chunk in chunks}
-        triage_results = self.triage_agent.analyze(chunks)
-        findings_by_category = self._run_domain_agents(triage_results, chunks_by_id)
-
         state = PipelineState(
             analysis_input=analysis_input,
-            timestamp=timestamp,
-            chunks=chunks,
-            triage_results=triage_results,
-            domain_findings=findings_by_category,
+            timestamp=datetime.now(UTC).isoformat(),
         )
-        #存储状态
-        state.reflection_result = self.reflection_agent.analyze(state)
-        state.revised_findings = self.revision_agent.revise(state)
-        state.confidence_result = self.confidence_evaluator.evaluate(state)
-        state.verification_result = self.verifier_agent.verify(state)
-        state.final_findings = self._resolve_final_findings(state)
-        state.needs_human_review = state.verification_result.needs_human_review
-        #完成四阶段验证循环
-        state.risk_report = self._build_report(state)
-        self.history_store.save_report(state.risk_report)
-        return state
+        result = self.compiled_workflow.invoke(state.model_dump())
+        final_state = PipelineState.model_validate(result)
+        if final_state.risk_report is None:
+            raise ValueError("Risk report generation failed.")
+        self.history_store.save_report(final_state.risk_report)
+        return final_state
+
+    def _stage_prepare(self, state: PipelineState | dict[str, Any]) -> dict[str, Any]:
+        state = self._coerce_state(state)
+        analysis_input = self._normalize_input(state.analysis_input)
+        if not analysis_input.raw_text:
+            raise ValueError("Analysis input must include raw_text after normalization.")
+        chunks = chunk_text(analysis_input.raw_text)
+        return {
+            "analysis_input": analysis_input.model_dump(),
+            "timestamp": state.timestamp or datetime.now(UTC).isoformat(),
+            "chunks": [chunk.model_dump() for chunk in chunks],
+        }
+
+    def _stage_triage(self, state: PipelineState | dict[str, Any]) -> dict[str, Any]:
+        state = self._coerce_state(state)
+        triage_results = self.triage_agent.analyze(state.chunks)
+        return {
+            "triage_results": [result.model_dump() for result in triage_results],
+        }
+
+    def _stage_domain_analysis(self, state: PipelineState | dict[str, Any]) -> dict[str, Any]:
+        state = self._coerce_state(state)
+        chunks_by_id = {chunk.chunk_id: chunk for chunk in state.chunks}
+        findings_by_category = self._run_domain_agents(state.triage_results, chunks_by_id)
+        return {
+            "domain_findings": {
+                category: [finding.model_dump() for finding in findings]
+                for category, findings in findings_by_category.items()
+            }
+        }
+
+    def _stage_reflection(self, state: PipelineState | dict[str, Any]) -> dict[str, Any]:
+        state = self._coerce_state(state)
+        reflection_result = self.reflection_agent.analyze(state)
+        return {"reflection_result": reflection_result.model_dump()}
+
+    def _stage_revision(self, state: PipelineState | dict[str, Any]) -> dict[str, Any]:
+        state = self._coerce_state(state)
+        revised_findings = self.revision_agent.revise(state)
+        return {
+            "revised_findings": {
+                category: [finding.model_dump() for finding in findings]
+                for category, findings in revised_findings.items()
+            }
+        }
+
+    def _stage_confidence(self, state: PipelineState | dict[str, Any]) -> dict[str, Any]:
+        state = self._coerce_state(state)
+        confidence_result = self.confidence_evaluator.evaluate(state)
+        return {"confidence_result": confidence_result.model_dump()}
+
+    def _stage_verifier(self, state: PipelineState | dict[str, Any]) -> dict[str, Any]:
+        state = self._coerce_state(state)
+        verification_result = self.verifier_agent.verify(state)
+        return {"verification_result": verification_result.model_dump()}
+
+    def _stage_human_review(self, state: PipelineState | dict[str, Any]) -> dict[str, Any]:
+        state = self._coerce_state(state)
+        return {
+            "needs_human_review": True,
+        }
+
+    def _stage_finalize(self, state: PipelineState | dict[str, Any]) -> dict[str, Any]:
+        state = self._coerce_state(state)
+        verification_result = state.verification_result
+        final_findings = self._resolve_final_findings(state)
+        needs_human_review = bool(verification_result and verification_result.needs_human_review) or state.needs_human_review
+        return {
+            "final_findings": [finding.model_dump() for finding in final_findings],
+            "needs_human_review": needs_human_review,
+        }
+
+    def _stage_report(self, state: PipelineState | dict[str, Any]) -> dict[str, Any]:
+        state = self._coerce_state(state)
+        report = self._build_report(state)
+        return {"risk_report": report.model_dump()}
+
+    def _route_after_verifier(self, state: PipelineState | dict[str, Any]) -> str:
+        state = self._coerce_state(state)
+        if state.verification_result and state.verification_result.needs_human_review:
+            return "human_review"
+        return "finalize"
+
+    def _coerce_state(self, state: PipelineState | dict[str, Any]) -> PipelineState:
+        if isinstance(state, dict):
+            payload = state
+        elif hasattr(state, "model_dump"):
+            payload = state.model_dump()
+        else:
+            payload = dict(state)
+        return PipelineState.model_validate(payload)
 
     def _run_domain_agents(
         self,
@@ -189,6 +268,7 @@ class RiskHiMATEPipeline:
         return {
             "report": state.risk_report.model_dump(),
             "debug": {
+                "workflow_backend": self.workflow_backend,
                 "input_type": state.analysis_input.input_type,
                 "chunk_count": len(state.chunks),
                 "triage_count": len(state.triage_results),

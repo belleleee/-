@@ -6,7 +6,32 @@ from typing import Any, get_args, get_origin
 import json
 
 try:
-    from pydantic import BaseModel, Field  # type: ignore
+    from pydantic import BaseModel as PydanticBaseModel, Field  # type: ignore
+
+    class BaseModel(PydanticBaseModel):
+        """Thin compatibility wrapper across Pydantic versions."""
+
+        @classmethod
+        def model_validate(cls, obj: Any) -> "BaseModel":
+            parent = super()
+            validator = getattr(parent, "model_validate", None)
+            if callable(validator):
+                return validator(obj)
+            return cls.parse_obj(obj)
+
+        def model_dump(self, **kwargs: Any) -> dict[str, Any]:
+            parent = super()
+            dumper = getattr(parent, "model_dump", None)
+            if callable(dumper):
+                return dumper(**kwargs)
+            return self.dict(**kwargs)
+
+        def model_dump_json(self, **kwargs: Any) -> str:
+            parent = super()
+            dumper = getattr(parent, "model_dump_json", None)
+            if callable(dumper):
+                return dumper(**kwargs)
+            return self.json(**kwargs)
 except ModuleNotFoundError:
     class BaseModel:
         """A tiny fallback with a subset of the Pydantic API used in this project."""
@@ -85,6 +110,14 @@ except ModuleNotFoundError:
 
         def model_dump_json(self, **kwargs: Any) -> str:
             return json.dumps(self.model_dump(), **kwargs)
+
+        @classmethod
+        def model_validate(cls, obj: Any) -> "BaseModel":
+            if isinstance(obj, cls):
+                return obj
+            if not isinstance(obj, dict):
+                raise TypeError(f"{cls.__name__}.model_validate expects a dict or model instance.")
+            return cls(**obj)
 
         def __repr__(self) -> str:
             return f"{self.__class__.__name__}({self.model_dump()!r})"

@@ -118,12 +118,14 @@ def main() -> None:
     result = {
         "report": state.risk_report.model_dump(),
         "debug": {
+            "workflow_backend": pipeline.workflow_backend,
             "input_type": state.analysis_input.input_type,
             "chunk_count": len(state.chunks),
             "triage_count": len(state.triage_results),
             "needs_human_review": state.needs_human_review,
             "triage_results": [result.model_dump() for result in state.triage_results],
             "reflection_result": state.reflection_result.model_dump() if state.reflection_result else None,
+            "confidence_result": state.confidence_result.model_dump() if state.confidence_result else None,
             "verification_result": state.verification_result.model_dump() if state.verification_result else None,
             "final_findings": [finding.model_dump() for finding in state.final_findings],
             "pipeline_state": state.model_dump(),
