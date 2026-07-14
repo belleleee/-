@@ -24,6 +24,7 @@ class VerifierAgent:
         original_findings = flatten_findings(state.domain_findings)
         revised_findings = flatten_findings(state.revised_findings)
         issues = state.reflection_result.issues if state.reflection_result else []
+        confidence_result = state.confidence_result
 
         resolved = 0
         accepted_ids: list[str] = []
@@ -53,7 +54,8 @@ class VerifierAgent:
                     accepted_ids.append(matched.finding_id)
 
         resolution_rate = 1.0 if not issues else resolved / len(issues)
-        confidence = round(min(0.98, 0.45 + 0.45 * resolution_rate), 2)
+        confidence_score = confidence_result.confidence_score if confidence_result else 0.7
+        confidence = round(min(0.98, max(0.0, 0.5 * resolution_rate + 0.5 * confidence_score)), 2)
 
         if resolution_rate >= 0.85:
             verdict = "accept"
@@ -62,8 +64,29 @@ class VerifierAgent:
         else:
             verdict = "revert_to_original"
 
+        gate_triggered = False
+        gate_reasons: list[str] = []
+        if confidence_result:
+            gate_triggered = (
+                confidence_result.gate_flags.privacy_legality_redline
+                or confidence_result.gate_flags.ethics_fairness_redline
+            )
+            gate_reasons = confidence_result.gate_flags.triggered_reasons
+
+        if verdict == "accept" and confidence_score < 0.55:
+            verdict = "partial_accept"
+        if verdict == "accept" and gate_triggered:
+            verdict = "partial_accept"
+        if verdict == "partial_accept" and confidence_score < 0.35 and resolution_rate < 0.55:
+            verdict = "revert_to_original"
+
         original_ids = {finding.finding_id for finding in original_findings}
         revised_ids = {finding.finding_id for finding in revised_findings}
+        has_cross_agent_disagreement = any(
+            finding.cross_agent_disagreement
+            or ("跨agent分歧" in (finding.revision_reason or ""))
+            for finding in revised_findings
+        )
         if verdict == "revert_to_original":
             rejected_ids = sorted(list(revised_ids - original_ids))
         else:
@@ -82,13 +105,17 @@ class VerifierAgent:
             if verdict == "partial_accept"
             else "Revisions did not sufficiently resolve reflected issues."
         )
+        if confidence_result:
+            notes += f" confidence_score={confidence_score:.2f}."
+        if gate_reasons:
+            notes += f" gate_flags={'; '.join(gate_reasons)}."
 
         return VerificationResult(
             verdict=verdict,
             confidence=confidence,
             accepted_finding_ids=sorted(set(accepted_ids)),
             rejected_finding_ids=rejected_ids,
-            needs_human_review=confidence < 0.6,
+            needs_human_review=confidence_score < 0.6 or has_cross_agent_disagreement or gate_triggered,
             notes=notes,
         )
 
@@ -107,6 +134,7 @@ class VerifierAgent:
                 '  "needs_human_review": false,\n'
                 '  "notes": "说明"\n'
                 "}\n\n"
+                f"confidence_result:\n{to_pretty_json(state.confidence_result.model_dump() if state.confidence_result else {})}\n\n"
                 f"original_findings:\n{to_pretty_json(state.domain_findings)}\n\n"
                 f"reflection_issues:\n{to_pretty_json([item.model_dump() for item in (state.reflection_result.issues if state.reflection_result else [])])}\n\n"
                 f"revised_findings:\n{to_pretty_json(state.revised_findings)}"

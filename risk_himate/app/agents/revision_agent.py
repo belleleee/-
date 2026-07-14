@@ -50,7 +50,7 @@ class RevisionAgent:
                 "      {\n"
                 '        "finding_id": "data_compliance-chunk-001",\n'
                 '        "category": "数据合规风险",\n'
-                '        "subtype": "跨境数据传输",\n'
+                '        "subtype": "数据共享与出境",\n'
                 '        "exists": true,\n'
                 '        "severity": "high",\n'
                 '        "confidence": 0.82,\n'
@@ -88,6 +88,10 @@ class RevisionAgent:
                         evidence_chunk_ids=chunk_ids,
                         rationale=item.get("rationale", "LLM-generated revised finding."),
                         legal_basis=item.get("legal_basis", []),
+                        trigger_signal_matched=item.get("trigger_signal_matched", []),
+                        related_category_hint=item.get("related_category_hint", []),
+                        lifecycle_stage_hint=item.get("lifecycle_stage_hint"),
+                        cross_agent_disagreement=bool(item.get("cross_agent_disagreement", False)),
                         revision_reason=item.get("revision_reason"),
                     )
                 )
@@ -127,6 +131,8 @@ class RevisionAgent:
             evidence_chunk_ids=[issue.chunk_id],
             rationale="Added during revision to cover a missing category flagged by reflection.",
             legal_basis=list(metadata["legal_basis"]),
+            related_category_hint=[],
+            lifecycle_stage_hint=None,
             revision_reason=issue.description,
         )
         revised.setdefault(issue.suggested_category, []).append(finding)
@@ -151,5 +157,7 @@ class RevisionAgent:
                 if finding.finding_id != issue.related_finding_id:
                     continue
                 finding.severity = issue.suggested_severity
+                if "跨agent分歧" in issue.description:
+                    finding.cross_agent_disagreement = True
                 finding.revision_reason = issue.description
                 return

@@ -1,33 +1,45 @@
 [
   {
     "category": "数据合规风险",
-    "subtype": "跨境数据传输",
-    "severity": "low",
-    "suggestion": "建议梳理数据出境场景、数据类型和接收方，建立跨境传输台账与审批机制。"
+    "subtype": "数据采集合规",
+    "severity": "high",
+    "suggestion": "建议立即补齐敏感个人信息采集告知、授权与最小必要评估，建立采集场景台账。"
   },
   {
     "category": "数据合规风险",
-    "subtype": "跨境数据传输",
+    "subtype": "数据存储泄漏",
     "severity": "high",
-    "suggestion": "建议立即开展数据出境合规评估，补齐标准合同、敏感数据分级和跨境传输最小化控制。"
+    "suggestion": "建议立即排查数据存储架构、访问控制和脱敏机制，补齐泄漏监测与应急响应流程。"
+  },
+  {
+    "category": "数据合规风险",
+    "subtype": "数据共享与出境",
+    "severity": "high",
+    "suggestion": "建议立即开展数据出境合规评估，梳理第三方共享链路，并补齐标准合同与分级控制。"
   },
   {
     "category": "算法安全风险",
-    "subtype": "算法黑箱",
+    "subtype": "算法操纵诱导",
+    "severity": "high",
+    "suggestion": "建议对高影响推荐和定向策略开展专项审计，限制诱导式优化目标并增加人工复核。"
+  },
+  {
+    "category": "算法安全风险",
+    "subtype": "模型失控故障",
     "severity": "medium",
-    "suggestion": "建议补充模型可解释性文档、人工申诉机制和关键决策留痕。"
-  },
-  {
-    "category": "算法安全风险",
-    "subtype": "算法歧视",
-    "severity": "high",
-    "suggestion": "建议对训练数据和规则开展公平性审计，并建立高风险策略复核流程。"
+    "suggestion": "建议补充模型监控、熔断、回滚与异常日志机制，降低模型失控与误判风险。"
   },
   {
     "category": "科技伦理风险",
-    "subtype": "透明度不足",
+    "subtype": "全局模型可解释",
     "severity": "medium",
-    "suggestion": "建议明确告知用户模型作用边界、关键决策依据与人工干预入口。"
+    "suggestion": "建议建立模型说明文档、决策边界披露和用户沟通机制，提升透明度。"
+  },
+  {
+    "category": "科技伦理风险",
+    "subtype": "单样本决策可追溯",
+    "severity": "high",
+    "suggestion": "建议补充单笔决策日志、人工申诉入口和复核流程，确保可追溯与可纠偏。"
   },
   {
     "category": "知识产权风险",
@@ -36,9 +48,21 @@
     "suggestion": "建议立即开展 FTO 检索和侵权排查，评估规避设计与授权谈判路径。"
   },
   {
+    "category": "知识产权风险",
+    "subtype": "开源软件合规",
+    "severity": "medium",
+    "suggestion": "建议建立开源许可证清单、合规审批和源码披露审查流程。"
+  },
+  {
     "category": "地缘博弈风险",
-    "subtype": "出海合规壁垒",
-    "severity": "low",
-    "suggestion": "建议建立目标市场法规清单，按国家梳理数据、出口和行业准入要求。"
+    "subtype": "实体清单/受限方清单",
+    "severity": "high",
+    "suggestion": "建议建立受限方筛查、出口许可复核和海外客户准入审查机制。"
+  },
+  {
+    "category": "地缘博弈风险",
+    "subtype": "出口管制物项动态纳入",
+    "severity": "medium",
+    "suggestion": "建议建立目标市场出口管制清单和物项更新跟踪机制，定期复核产品与技术暴露。"
   }
 ]

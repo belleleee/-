@@ -26,13 +26,13 @@
       {
         "finding_id": "data_compliance-chunk-001",
         "category": "数据合规风险",
-        "subtype": "跨境数据传输",
+        "subtype": "数据共享与出境",
         "exists": true,
         "severity": "high",
         "confidence": 0.89,
         "evidence_chunk_ids": ["chunk-001"],
         "rationale": "文本出现境外服务器和未告知用户。",
-        "revision_reason": "根据 reflection，将 subtype 从数据采集合规调整为跨境数据传输。"
+        "revision_reason": "根据 reflection，将 subtype 从数据采集合规调整为数据共享与出境。"
       }
     ]
   }

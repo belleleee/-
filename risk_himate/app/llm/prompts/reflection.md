@@ -34,9 +34,9 @@
       "category": "数据合规风险",
       "chunk_id": "chunk-001",
       "related_finding_id": "data_compliance-chunk-001",
-      "description": "该 finding 更符合跨境数据传输，而不是一般数据采集合规。",
-      "suggested_fix": "将 subtype 调整为跨境数据传输。",
-      "suggested_subtype": "跨境数据传输",
+      "description": "该 finding 更符合数据共享与出境，而不是一般数据采集合规。",
+      "suggested_fix": "将 subtype 调整为数据共享与出境。",
+      "suggested_subtype": "数据共享与出境",
       "confidence": 0.84
     }
   ],

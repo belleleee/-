@@ -22,8 +22,10 @@ from risk_himate.app.core.analysis import (
     flatten_findings,
 )
 from risk_himate.app.core.chunking import chunk_text
+from risk_himate.app.core.confidence import ConfidenceEvaluator
 from risk_himate.app.core.reporting import build_risk_report
-from risk_himate.app.core.schemas import AnalysisInput, PipelineState, RiskFinding
+from risk_himate.app.core.schemas import AnalysisInput, PipelineState, RiskFinding, TextChunk, TriageResult
+from risk_himate.app.core.taxonomy import CATEGORY_PROPAGATION_MAP
 from risk_himate.app.llm.client import OpenAICompatibleLLMClient
 from risk_himate.app.rag.recommendation_store import LocalRecommendationStore, RecommendationStore
 from risk_himate.app.storage.history_store import HistoryStore, NullHistoryStore, compute_trend
@@ -48,6 +50,7 @@ class RiskHiMATEPipeline:
         ]
         self.reflection_agent = ReflectionAgent(llm_client=llm_client)
         self.revision_agent = RevisionAgent(llm_client=llm_client)
+        self.confidence_evaluator = ConfidenceEvaluator()
         self.verifier_agent = VerifierAgent(llm_client=llm_client)
         self.recommendation_store = recommendation_store or LocalRecommendationStore()
         self.history_store = history_store or NullHistoryStore()
@@ -64,12 +67,7 @@ class RiskHiMATEPipeline:
         chunks = chunk_text(analysis_input.raw_text)
         chunks_by_id = {chunk.chunk_id: chunk for chunk in chunks}
         triage_results = self.triage_agent.analyze(chunks)
-        #准备数据
-
-        findings_by_category: dict[str, list[RiskFinding]] = {}
-        for agent in self.domain_agents:
-            findings_by_category[agent.category_label] = agent.analyze(triage_results, chunks_by_id)
-            #五个agent并行分析
+        findings_by_category = self._run_domain_agents(triage_results, chunks_by_id)
 
         state = PipelineState(
             analysis_input=analysis_input,
@@ -81,6 +79,7 @@ class RiskHiMATEPipeline:
         #存储状态
         state.reflection_result = self.reflection_agent.analyze(state)
         state.revised_findings = self.revision_agent.revise(state)
+        state.confidence_result = self.confidence_evaluator.evaluate(state)
         state.verification_result = self.verifier_agent.verify(state)
         state.final_findings = self._resolve_final_findings(state)
         state.needs_human_review = state.verification_result.needs_human_review
@@ -88,6 +87,78 @@ class RiskHiMATEPipeline:
         state.risk_report = self._build_report(state)
         self.history_store.save_report(state.risk_report)
         return state
+
+    def _run_domain_agents(
+        self,
+        triage_results: list[TriageResult],
+        chunks_by_id: dict[str, TextChunk],
+    ) -> dict[str, list[RiskFinding]]:
+        findings_by_category: dict[str, list[RiskFinding]] = {}
+        agent_by_label = {agent.category_label: agent for agent in self.domain_agents}
+
+        for agent in self.domain_agents:
+            findings_by_category[agent.category_label] = agent.analyze(triage_results, chunks_by_id)
+
+        for source_category, target_categories in CATEGORY_PROPAGATION_MAP.items():
+            source_findings = findings_by_category.get(source_category, [])
+            if not source_findings:
+                continue
+            for target_category in target_categories:
+                target_agent = agent_by_label.get(target_category)
+                if target_agent is None:
+                    continue
+                extra_triage, extra_chunk = self._build_propagation_context(
+                    source_category=source_category,
+                    target_category=target_category,
+                    source_findings=source_findings,
+                )
+                if extra_triage is None or extra_chunk is None:
+                    continue
+                local_chunks = dict(chunks_by_id)
+                local_chunks[extra_chunk.chunk_id] = extra_chunk
+                propagated = target_agent.analyze([extra_triage], local_chunks)
+                if not propagated:
+                    continue
+                existing = findings_by_category.setdefault(target_category, [])
+                existing_ids = {finding.finding_id for finding in existing}
+                for finding in propagated:
+                    finding.related_category_hint = sorted(set(finding.related_category_hint + [source_category]))
+                    if "cross_agent_propagation" not in finding.trigger_signal_matched:
+                        finding.trigger_signal_matched.append("cross_agent_propagation")
+                    if finding.finding_id not in existing_ids:
+                        existing.append(finding)
+        return findings_by_category
+
+    def _build_propagation_context(
+        self,
+        source_category: str,
+        target_category: str,
+        source_findings: list[RiskFinding],
+    ) -> tuple[TriageResult | None, TextChunk | None]:
+        evidence_parts = [finding.evidence for finding in source_findings[:3] if finding.evidence]
+        if not evidence_parts:
+            return None, None
+        synthetic_chunk_id = f"propagation-{source_category}-{target_category}"
+        synthetic_text = (
+            f"来自{source_category}的关联证据："
+            + "；".join(evidence_parts)
+            + f"。请从{target_category}视角复核这些事实是否会产生传导风险。"
+        )
+        return (
+            TriageResult(
+                chunk_id=synthetic_chunk_id,
+                text=synthetic_text,
+                candidate_risk_types=[target_category],
+                relevance_score=max(finding.confidence for finding in source_findings),
+                rationale=f"{source_category} 命中后触发对 {target_category} 的一次传导复核。",
+            ),
+            TextChunk(
+                chunk_id=synthetic_chunk_id,
+                text=synthetic_text,
+                source_type="propagated_context",
+                source_name=f"{source_category}->{target_category}",
+            ),
+        )
 
     def run(self, analysis_input: AnalysisInput) -> dict:
         state = self.run_state(analysis_input)
@@ -124,6 +195,7 @@ class RiskHiMATEPipeline:
                 "needs_human_review": state.needs_human_review,
                 "triage_results": [result.model_dump() for result in state.triage_results],
                 "reflection_result": state.reflection_result.model_dump() if state.reflection_result else None,
+                "confidence_result": state.confidence_result.model_dump() if state.confidence_result else None,
                 "verification_result": state.verification_result.model_dump() if state.verification_result else None,
                 "final_findings": [finding.model_dump() for finding in state.final_findings],
                 "pipeline_state": state.model_dump(),
@@ -139,6 +211,7 @@ class RiskHiMATEPipeline:
             timestamp=state.timestamp,
             findings=state.final_findings,
             suggestions=suggestions,
+            confidence_result=state.confidence_result,
             trend=None,
             trend_delta=None,
             force_human_review=state.needs_human_review,
@@ -149,6 +222,7 @@ class RiskHiMATEPipeline:
             timestamp=state.timestamp,
             findings=state.final_findings,
             suggestions=suggestions,
+            confidence_result=state.confidence_result,
             trend=trend,
             trend_delta=trend_delta,
             force_human_review=state.needs_human_review,

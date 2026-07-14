@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from risk_himate.app.core.analysis import flatten_findings, average_confidence
+from risk_himate.app.core.analysis import average_confidence, flatten_findings, severity_gap
 from risk_himate.app.core.schemas import PipelineState, ReflectionIssue, ReflectionResult, RiskFinding
 from risk_himate.app.core.taxonomy import RISK_TAXONOMY
 from risk_himate.app.llm.client import OpenAICompatibleLLMClient
@@ -12,12 +12,6 @@ from risk_himate.app.llm.prompting import load_prompt, to_pretty_json
 SEVERITY_KEYWORDS = {
     "high": ["处罚", "违法", "侵权", "泄露", "跨境", "制裁", "封锁"],
     "medium": ["争议", "整改", "风险", "敏感"],
-}
-
-SEVERITY_ORDER = {
-    "low": 0,
-    "medium": 1,
-    "high": 2,
 }
 
 CATEGORY_SEVERITY_SIGNALS = {
@@ -34,30 +28,23 @@ CATEGORY_SEVERITY_SIGNALS = {
             "跨境",
             "出境",
         ],
-        "medium": [
-            "个人信息",
-            "用户数据",
-            "行为数据",
-            "隐私",
-            "数据安全",
-            "数据存储",
-        ],
+        "medium": ["个人信息", "用户数据", "行为数据", "隐私", "数据安全", "数据存储", "第三方共享"],
     },
     "地缘博弈风险": {
-        "high": ["制裁", "封锁", "出口管制", "实体清单"],
-        "medium": ["海外客户", "海外市场", "出海", "境外监管", "数据主权", "境外服务器"],
+        "high": ["制裁", "出口管制", "实体清单", "外国投资审查", "受限方"],
+        "medium": ["海外客户", "海外市场", "出海", "境外监管", "数据主权", "境外服务器", "技术转移"],
     },
     "算法安全风险": {
-        "high": ["算法歧视", "黑箱", "不可解释", "自动决策"],
-        "medium": ["算法推荐", "推荐系统", "可解释性", "模型"],
+        "high": ["诱导", "操纵", "失控", "故障", "对抗样本", "越狱"],
+        "medium": ["算法推荐", "推荐系统", "模型", "自动决策", "滥用"],
     },
     "科技伦理风险": {
-        "high": ["歧视", "人工干预机制缺失", "无法申诉", "缺乏人工干预"],
-        "medium": ["透明度", "公平性", "问责", "伦理"],
+        "high": ["歧视", "无法申诉", "缺乏人工干预", "不可追溯"],
+        "medium": ["透明度", "公平性", "问责", "伦理", "模型迭代", "费率"],
     },
     "知识产权风险": {
-        "high": ["侵权", "技术泄露", "商业秘密"],
-        "medium": ["专利争议", "商标", "软著", "知识产权"],
+        "high": ["侵权", "技术泄露", "商业秘密", "泄密"],
+        "medium": ["专利争议", "开源", "许可证", "知识产权", "权属"],
     },
 }
 
@@ -81,6 +68,7 @@ class ReflectionAgent:
         issues.extend(self._find_missing_risks(state))
         issues.extend(self._find_subtype_issues(findings))
         issues.extend(self._find_severity_issues(findings))
+        issues.extend(self._find_cross_agent_disagreements(findings))
 
         confidence = average_confidence(findings)
         summary = (
@@ -111,7 +99,7 @@ class ReflectionAgent:
                 '      "description": "说明",\n'
                 '      "suggested_fix": "修正建议",\n'
                 '      "suggested_category": "数据合规风险",\n'
-                '      "suggested_subtype": "跨境数据传输",\n'
+                '      "suggested_subtype": "数据共享与出境",\n'
                 '      "suggested_severity": "high",\n'
                 '      "confidence": 0.8\n'
                 "    }\n"
@@ -203,14 +191,22 @@ class ReflectionAgent:
                 subtype_keywords = [token for token in subtype.replace("/", " ").split() if token]
                 if any(token.lower() in lowered for token in subtype_keywords):
                     return str(subtype)
-            if category_label == "数据合规风险" and any(token in lowered for token in ["跨境", "境外", "出境"]):
-                return "跨境数据传输"
-            if category_label == "算法安全风险" and any(token in lowered for token in ["可解释", "黑箱"]):
-                return "算法黑箱"
-            if category_label == "地缘博弈风险" and any(token in lowered for token in ["海外", "出海", "境外监管"]):
-                return "出海合规壁垒"
-            if category_label == "知识产权风险" and any(token in lowered for token in ["商标", "软著"]):
-                return "软著/商标风险"
+            if category_label == "数据合规风险" and any(token in lowered for token in ["跨境", "境外", "出境", "第三方共享"]):
+                return "数据共享与出境"
+            if category_label == "算法安全风险" and any(token in lowered for token in ["诱导", "操纵", "推荐"]):
+                return "算法操纵诱导"
+            if category_label == "算法安全风险" and any(token in lowered for token in ["失控", "故障", "异常输出"]):
+                return "模型失控故障"
+            if category_label == "科技伦理风险" and any(token in lowered for token in ["可解释", "透明"]):
+                return "全局模型可解释"
+            if category_label == "地缘博弈风险" and any(token in lowered for token in ["实体清单", "受限方", "制裁"]):
+                return "实体清单/受限方清单"
+            if category_label == "地缘博弈风险" and any(token in lowered for token in ["出口管制", "两用物项"]):
+                return "出口管制物项动态纳入"
+            if category_label == "知识产权风险" and any(token in lowered for token in ["开源", "许可证", "gpl", "apache", "mit"]):
+                return "开源软件合规"
+            if category_label == "知识产权风险" and any(token in lowered for token in ["权属", "职务发明", "研发人员"]):
+                return "职务发明权属争议"
         return None
 
     def _infer_severity(self, category_label: str, evidence: str) -> str:
@@ -246,3 +242,42 @@ class ReflectionAgent:
         if any(token in lowered for token in SEVERITY_KEYWORDS["medium"]):
             return "medium"
         return "low"
+
+    def _find_cross_agent_disagreements(self, findings: list[RiskFinding]) -> list[ReflectionIssue]:
+        issues: list[ReflectionIssue] = []
+        for index, finding in enumerate(findings):
+            for other in findings[index + 1:]:
+                if finding.category == other.category:
+                    continue
+                if not self._share_fact_basis(finding, other):
+                    continue
+                if severity_gap(finding.severity, other.severity) < 2:
+                    continue
+
+                lower, higher = (
+                    (finding, other)
+                    if finding.severity != "high"
+                    else (other, finding)
+                )
+                issues.append(
+                    ReflectionIssue(
+                        issue_id=f"cross-severity-{lower.finding_id}",
+                        issue_type="severity_issue",
+                        category=lower.category,
+                        related_finding_id=lower.finding_id,
+                        chunk_id=lower.evidence_chunk_ids[0] if lower.evidence_chunk_ids else None,
+                        description=(
+                            f"Finding {lower.finding_id} 与 {higher.finding_id} 对同一事实存在跨agent分歧，"
+                            "当前按较高严重度处理。"
+                        ),
+                        suggested_fix="将较低严重度提升到跨agent比较中的较高值，并提高人工复核优先级。",
+                        suggested_severity=higher.severity,
+                        confidence=max(0.5, min(higher.confidence, 0.9)),
+                    )
+                )
+        return issues
+
+    def _share_fact_basis(self, left: RiskFinding, right: RiskFinding) -> bool:
+        if set(left.evidence_chunk_ids) & set(right.evidence_chunk_ids):
+            return True
+        return left.evidence == right.evidence

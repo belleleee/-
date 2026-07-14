@@ -39,6 +39,8 @@ class PipelineTests(TestCase):
         self.assertEqual(report["company"], "示例科技")
         self.assertGreaterEqual(result["debug"]["chunk_count"], 1)
         self.assertIn("risk_details", report)
+        self.assertIn("confidence_result", result["debug"])
+        self.assertIn("confidence_breakdown", report)
         self.assertTrue(
             report["risk_details"],
             "Expected at least one risk finding in the sample text.",

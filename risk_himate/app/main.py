@@ -6,6 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
+from risk_himate.app.core.presentation import write_rendered_report
 from risk_himate.app.core.schemas import AnalysisInput
 from risk_himate.app.data_sources.company_profile_collector import LocalCompanyDataCollector
 from risk_himate.app.data_sources.external_api_collector import ExternalCompanyDataCollector
@@ -62,6 +63,10 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="When used with --output or stdout, emit only the report object instead of the full debug payload.",
     )
+    parser.add_argument(
+        "--rendered-report",
+        help="Optional human-readable report output path. Supported extensions: .md, .html, .rtf, .docx",
+    )
     return parser
 
 
@@ -107,7 +112,23 @@ def main() -> None:
         raw_text=args.text,
         metadata=metadata,
     )
-    result = pipeline.run(analysis_input)
+    state = pipeline.run_state(analysis_input)
+    if state.risk_report is None:
+        raise SystemExit("Risk report generation failed.")
+    result = {
+        "report": state.risk_report.model_dump(),
+        "debug": {
+            "input_type": state.analysis_input.input_type,
+            "chunk_count": len(state.chunks),
+            "triage_count": len(state.triage_results),
+            "needs_human_review": state.needs_human_review,
+            "triage_results": [result.model_dump() for result in state.triage_results],
+            "reflection_result": state.reflection_result.model_dump() if state.reflection_result else None,
+            "verification_result": state.verification_result.model_dump() if state.verification_result else None,
+            "final_findings": [finding.model_dump() for finding in state.final_findings],
+            "pipeline_state": state.model_dump(),
+        },
+    }
     output_payload = result["report"] if args.report_only else result
     output_text = json.dumps(output_payload, ensure_ascii=False, indent=2)
 
@@ -115,6 +136,11 @@ def main() -> None:
         output_path = Path(args.output)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(output_text, encoding="utf-8")
+
+    if args.rendered_report:
+        rendered_output_path = Path(args.rendered_report)
+        rendered_output_path.parent.mkdir(parents=True, exist_ok=True)
+        write_rendered_report(state.risk_report, rendered_output_path)
 
     print(output_text)
 

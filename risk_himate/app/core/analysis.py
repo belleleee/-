@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from risk_himate.app.core.schemas import RiskFinding
-from risk_himate.app.core.taxonomy import RISK_TAXONOMY, RISK_LABEL_TO_CODE
+from risk_himate.app.core.taxonomy import LIFECYCLE_STAGES, RISK_LABEL_TO_CODE, RISK_TAXONOMY, SUBTYPE_STAGE_FALLBACK
 
 
 SEVERITY_SCORES = {
@@ -43,6 +43,12 @@ def compute_overall_score(findings: list[RiskFinding]) -> float:
     return round(min(100.0, total / max(len(findings), 1)), 2)
 
 
+def resolve_lifecycle_stage(finding: RiskFinding) -> str:
+    if finding.lifecycle_stage_hint in LIFECYCLE_STAGES:
+        return str(finding.lifecycle_stage_hint)
+    return SUBTYPE_STAGE_FALLBACK.get(finding.subtype, "场景落地")
+
+
 def score_to_level(score: float) -> str:
     if score >= 70:
         return "high"
@@ -57,3 +63,8 @@ def top_categories(findings: list[RiskFinding]) -> list[str]:
         counts[finding.category] = counts.get(finding.category, 0) + 1
     ranked = sorted(counts.items(), key=lambda item: (-item[1], item[0]))
     return [category for category, _ in ranked[:3]]
+
+
+def severity_gap(left: str, right: str) -> int:
+    order = {"low": 0, "medium": 1, "high": 2}
+    return abs(order.get(left, 0) - order.get(right, 0))

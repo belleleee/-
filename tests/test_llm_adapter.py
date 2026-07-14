@@ -27,11 +27,11 @@ class StubLLMAdapterTests(TestCase):
                     {
                         "chunk_id": "chunk-000",
                         "category": "数据合规风险",
-                        "subtype": "跨境数据传输",
+                        "subtype": "数据共享与出境",
                         "exists": True,
                         "severity": "high",
                         "confidence": 0.91,
-                        "rationale": "跨境数据传输风险明显。",
+                        "rationale": "数据共享与出境风险明显。",
                     }
                 ]
             },
@@ -46,12 +46,12 @@ class StubLLMAdapterTests(TestCase):
                         {
                             "finding_id": "data_compliance-chunk-000",
                             "category": "数据合规风险",
-                            "subtype": "跨境数据传输",
+                            "subtype": "数据共享与出境",
                             "exists": True,
                             "severity": "high",
                             "confidence": 0.91,
                             "evidence_chunk_ids": ["chunk-000"],
-                            "rationale": "跨境数据传输风险明显。",
+                            "rationale": "数据共享与出境风险明显。",
                             "revision_reason": "无须进一步修正。",
                         }
                     ]
@@ -85,7 +85,7 @@ class StubLLMAdapterTests(TestCase):
             )
         )
 
-        self.assertEqual(result["report"]["risk_details"][0]["subtype"], "跨境数据传输")
+        self.assertEqual(result["report"]["risk_details"][0]["subtype"], "数据共享与出境")
         self.assertEqual(result["debug"]["triage_results"][0]["relevance_score"], 0.88)
 
     def test_pipeline_falls_back_when_llm_adapter_raises(self) -> None:
@@ -131,7 +131,7 @@ class StubLLMAdapterTests(TestCase):
                                         {
                                             "chunk_id": "chunk-000",
                                             "category": "数据合规风险",
-                                            "subtype": "跨境数据传输",
+                                            "subtype": "数据共享与出境",
                                             "exists": True,
                                             "severity": "high",
                                             "confidence": 0.94,

@@ -42,6 +42,10 @@ class RiskFinding(BaseModel):
     evidence_chunk_ids: list[str]
     rationale: str
     legal_basis: list[str] = Field(default_factory=list)
+    trigger_signal_matched: list[str] = Field(default_factory=list)
+    related_category_hint: list[str] = Field(default_factory=list)
+    lifecycle_stage_hint: str | None = None
+    cross_agent_disagreement: bool = False
     revision_reason: str | None = None
 
 
@@ -55,8 +59,19 @@ class RiskReportDetail(BaseModel):
     evidence: str
     suggestion: str
     legal_basis: list[str] = Field(default_factory=list)
+    trigger_signal_matched: list[str] = Field(default_factory=list)
+    related_category_hint: list[str] = Field(default_factory=list)
+    lifecycle_stage_hint: str | None = None
+    cross_agent_disagreement: bool = False
     needs_human_review: bool = False
     revision_reason: str | None = None
+
+
+class LifecycleStageGroup(BaseModel):
+    stage: str
+    summary: str
+    risk_details: list[RiskReportDetail] = Field(default_factory=list)
+    propagation_hints: list[str] = Field(default_factory=list)
 
 
 class ReflectionIssue(BaseModel):
@@ -79,6 +94,22 @@ class ReflectionResult(BaseModel):
     summary: str
 
 
+class GateFlags(BaseModel):
+    privacy_legality_redline: bool = False
+    ethics_fairness_redline: bool = False
+    triggered_reasons: list[str] = Field(default_factory=list)
+
+
+class ConfidenceResult(BaseModel):
+    confidence_score: float
+    signal_strength: float
+    robustness: float
+    cross_agent_consistency: float
+    disagreement_flags: list[str] = Field(default_factory=list)
+    gate_flags: GateFlags = Field(default_factory=GateFlags)
+    summary: str = ""
+
+
 class VerificationResult(BaseModel):
     verdict: Literal["accept", "partial_accept", "revert_to_original"]
     confidence: float
@@ -94,9 +125,13 @@ class RiskReport(BaseModel):
     overall_risk_level: Literal["low", "medium", "high"]
     overall_score: float
     confidence: float
+    confidence_breakdown: ConfidenceResult | None = None
     risk_details: list[RiskReportDetail]
     top3_risks: list[RiskReportDetail]
     human_review_items: list[RiskReportDetail] = Field(default_factory=list)
+    lifecycle_stage_groups: list[LifecycleStageGroup] = Field(default_factory=list)
+    propagation_hints: list[str] = Field(default_factory=list)
+    gate_flags: GateFlags = Field(default_factory=GateFlags)
     trend: str | None = None
     trend_delta: float | None = None
     top_categories: list[str] = Field(default_factory=list)
@@ -110,6 +145,7 @@ class PipelineState(BaseModel):
     domain_findings: dict[str, list[RiskFinding]] = Field(default_factory=dict)
     reflection_result: ReflectionResult | None = None
     revised_findings: dict[str, list[RiskFinding]] = Field(default_factory=dict)
+    confidence_result: ConfidenceResult | None = None
     verification_result: VerificationResult | None = None
     final_findings: list[RiskFinding] = Field(default_factory=list)
     needs_human_review: bool = False
