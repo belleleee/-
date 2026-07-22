@@ -13,6 +13,7 @@ risk_himate/
 ├── README.md
 ├── 1207403259.pdf
 ├── app/
+│   ├── api/
 │   ├── agents/
 │   ├── core/
 │   ├── data_sources/
@@ -37,6 +38,15 @@ risk_himate/
   根据反思结果修正 findings
 - `verifier_agent.py`
   对修正后的结果做最终核验
+
+### `app/api/`
+
+负责把 Risk-HiMATE 包装成后端服务：
+
+- `server.py`
+  FastAPI 服务入口，包含 `/health`、`/analyze` 等接口
+- `api_schemas.py`
+  API 层的请求/响应 schema
 
 ### `app/core/`
 
@@ -145,6 +155,63 @@ python3 -m risk_himate.app.main \
   --llm-mode auto \
   --report-only \
   --output risk_himate/output/my_report.json
+```
+
+### 启动后端 API
+
+当前仓库已经新增 FastAPI 后端封装，启动命令：
+
+```bash
+python3 -m risk_himate.app.api.server
+```
+
+默认地址：
+
+- `http://127.0.0.1:8000`
+
+浏览器访问：
+
+- `http://127.0.0.1:8000/`
+
+即可打开内置前端页面。它已经接好了：
+
+- 后端状态检查
+- 文本 / 企业名称两种输入模式
+- `auto / llm / rule` 推理模式切换
+- 正式报告、置信度拆解、生命周期分组和 debug 展示
+
+可用接口：
+
+- `GET /health`
+- `POST /analyze`
+- `POST /analyze/report-only`
+- `GET /reports/{company}`
+
+一个最小调用示例：
+
+```bash
+curl -X POST http://127.0.0.1:8000/analyze \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "input_type": "document",
+    "company_name": "测试企业",
+    "raw_text": "本公司收集用户面部识别数据用于广告推送，数据存储在境外服务器，未向用户明确告知。",
+    "llm_mode": "auto",
+    "report_only": false
+  }'
+```
+
+如果只需要正式报告：
+
+```bash
+curl -X POST http://127.0.0.1:8000/analyze/report-only \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "input_type": "document",
+    "company_name": "测试企业",
+    "raw_text": "本公司收集用户面部识别数据用于广告推送，数据存储在境外服务器，未向用户明确告知。",
+    "llm_mode": "llm"
+  }'
 ```
 
 ## 4. 输出结构

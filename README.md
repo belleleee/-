@@ -209,6 +209,7 @@ Risk-HiMATE 试图解决的，不是“代替专业判断”，而是：
 - 支持文档文本输入
 - 支持企业名称输入
 - 支持 rule-based / LLM / auto fallback 三种运行模式
+- 支持 FastAPI 后端封装，可直接作为前端调用的分析服务
 - 支持 LangGraph-native 工作流组织
 - 支持五类专职 risk agent
 - 支持 reflection / revision / verifier 多阶段闭环
@@ -218,6 +219,84 @@ Risk-HiMATE 试图解决的，不是“代替专业判断”，而是：
 - 支持历史记录存储与趋势接口
 - 支持本地 LM Studio / OpenAI-compatible 模型调用
 - 支持 PDF 文本抽取后送入 pipeline 演示
+
+## 6. 后端服务化
+
+当前系统已经可以直接包装成后端。仓库内新增了：
+
+- [risk_himate/app/api/server.py](/Users/belle/projects/挑战杯/risk_himate/app/api/server.py)
+- [risk_himate/app/api/api_schemas.py](/Users/belle/projects/挑战杯/risk_himate/app/api/api_schemas.py)
+
+这一层不会改动多智能体分析逻辑，而是把现有：
+
+- `AnalysisInput`
+- `RiskHiMATEPipeline`
+- `report + debug`
+
+包装成 HTTP API，供前端或其他系统调用。
+
+### 启动后端
+
+```bash
+python3 -m risk_himate.app.api.server
+```
+
+默认监听：
+
+- `http://127.0.0.1:8000`
+
+启动后，浏览器直接访问：
+
+- `http://127.0.0.1:8000/`
+
+即可打开内置前端控制台。这个前端是一个无需额外 Node 环境的静态单页，会直接调用后端的 `/health`、`/analyze` 和 `/analyze/report-only` 接口。
+
+可用环境变量：
+
+- `RISK_HIMATE_API_HOST`
+- `RISK_HIMATE_API_PORT`
+- `RISK_HIMATE_HISTORY_STORE`
+- `RISK_HIMATE_HISTORY_PATH`
+- `RISK_HIMATE_COLLECTOR`
+- `RISK_HIMATE_COMPANY_DATA_PATH`
+
+### 可用接口
+
+1. `GET /health`
+   返回服务状态、当前 `workflow_backend`、历史存储模式、collector 模式、LLM 是否可用
+2. `POST /analyze`
+   提交分析请求，返回 `report + debug`
+3. `POST /analyze/report-only`
+   只返回正式报告
+4. `GET /reports/{company}`
+   返回指定企业最近一次保存的报告
+
+### 请求示例
+
+```bash
+curl -X POST http://127.0.0.1:8000/analyze \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "input_type": "document",
+    "company_name": "测试企业",
+    "raw_text": "本公司收集用户面部识别数据用于广告推送，数据存储在境外服务器，未向用户明确告知。",
+    "llm_mode": "auto",
+    "report_only": false
+  }'
+```
+
+如果要只拿正式报告：
+
+```bash
+curl -X POST http://127.0.0.1:8000/analyze/report-only \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "input_type": "document",
+    "company_name": "测试企业",
+    "raw_text": "本公司收集用户面部识别数据用于广告推送，数据存储在境外服务器，未向用户明确告知。",
+    "llm_mode": "llm"
+  }'
+```
 
 补充一句非常实际的工程经验：
 

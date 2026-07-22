@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Risk-HiMATE Console</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Risk-HiMATE Console</p>
+          <h1>科创企业特有风险识别智能体</h1>
+          <p class="hero-text">
+            把 LangGraph-native 多智能体风险工作流包装成一个可交互的分析控制台。输入企业材料，查看总体风险、阶段化风险、置信度分解和中间调试链路。
+          </p>
+          <div class="hero-actions">
+            <button id="scroll-to-form" class="primary-button">开始分析</button>
+            <button id="refresh-health" class="secondary-button">刷新后端状态</button>
+          </div>
+        </div>
+        <aside class="hero-status">
+          <div class="status-card">
+            <div class="status-head">
+              <span class="status-label">后端状态</span>
+              <span id="health-badge" class="status-badge status-pending">检查中</span>
+            </div>
+            <dl class="status-grid">
+              <div>
+                <dt>工作流</dt>
+                <dd id="health-workflow">-</dd>
+              </div>
+              <div>
+                <dt>LLM 可用</dt>
+                <dd id="health-llm">-</dd>
+              </div>
+              <div>
+                <dt>Collector</dt>
+                <dd id="health-collector">-</dd>
+              </div>
+              <div>
+                <dt>History</dt>
+                <dd id="health-history">-</dd>
+              </div>
+            </dl>
+          </div>
+          <div class="signal-card">
+            <p>分析链路</p>
+            <ol>
+              <li>文本切块与初评筛选</li>
+              <li>五类专职智能体并行判断</li>
+              <li>Reflection / Revision / Confidence</li>
+              <li>Verifier 与正式风险报告</li>
+            </ol>
+          </div>
+        </aside>
+      </header>
+
+      <main class="main-grid">
+        <section id="analysis-form" class="panel input-panel">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">输入区</p>
+              <h2>提交分析请求</h2>
+            </div>
+            <div class="toggle-group" role="tablist" aria-label="输入类型">
+              <button class="toggle active" data-input-type="document">文档文本</button>
+              <button class="toggle" data-input-type="company_name">企业名称</button>
+            </div>
+          </div>
+
+          <form id="analyze-form" class="analyze-form">
+            <input type="hidden" id="input-type" value="document" />
+
+            <label class="field">
+              <span>企业名称</span>
+              <input id="company-name" type="text" placeholder="例如：测试企业 / 皇氏集团股份有限公司" />
+            </label>
+
+            <label id="raw-text-field" class="field">
+              <span>企业材料文本</span>
+              <textarea
+                id="raw-text"
+                rows="10"
+                placeholder="粘贴招股书风险章节、公告摘要、合同条款、研发说明或舆情摘要。"
+              ></textarea>
+            </label>
+
+            <label id="metadata-field" class="field field-hidden">
+              <span>采集补充信息（可选 JSON）</span>
+              <textarea
+                id="metadata"
+                rows="6"
+                placeholder='例如：{"country":"CN","industry":"AI医疗"}'
+              ></textarea>
+            </label>
+
+            <div class="form-row">
+              <label class="field">
+                <span>推理模式</span>
+                <select id="llm-mode">
+                  <option value="auto">auto</option>
+                  <option value="llm">llm</option>
+                  <option value="rule">rule</option>
+                </select>
+              </label>
+
+              <label class="field checkbox-field">
+                <input id="report-only" type="checkbox" />
+                <span>只请求正式报告</span>
+              </label>
+            </div>
+
+            <div class="form-row actions-row">
+              <button type="submit" class="primary-button">运行 Risk-HiMATE</button>
+              <button type="button" id="load-demo" class="secondary-button">载入演示文本</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="panel explainer-panel">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">解读区</p>
+              <h2>前端展示重点</h2>
+            </div>
+          </div>
+          <div class="explain-grid">
+            <article>
+              <h3>总体面板</h3>
+              <p>优先展示总体风险等级、风险分数、置信度和人工复核标记。</p>
+            </article>
+            <article>
+              <h3>Top 3 风险</h3>
+              <p>评委最先看这三条，必须包含证据、严重度和整改建议。</p>
+            </article>
+            <article>
+              <h3>阶段化视图</h3>
+              <p>按技术研发、数据运营、场景落地、商业出海分组，更贴近真实治理流程。</p>
+            </article>
+            <article>
+              <h3>调试链路</h3>
+              <p>保留 triage、reflection、confidence、verifier 的关键信息，方便团队解释系统不是“黑箱打分”。</p>
+            </article>
+          </div>
+        </section>
+      </main>
+
+      <section id="loading-state" class="loading-state hidden">
+        <div class="loading-line"></div>
+        <p>多智能体正在协同分析，请稍候…</p>
+      </section>
+
+      <section id="error-state" class="panel error-panel hidden">
+        <h2>请求失败</h2>
+        <pre id="error-message"></pre>
+      </section>
+
+      <section id="report-section" class="hidden">
+        <div class="section-head">
+          <div>
+            <p class="panel-kicker">正式报告</p>
+            <h2>风险结果总览</h2>
+          </div>
+          <span id="report-timestamp" class="muted-pill">-</span>
+        </div>
+
+        <div class="overview-grid">
+          <article class="metric-card metric-card-emphasis">
+            <p>总体风险等级</p>
+            <h3 id="overall-level">-</h3>
+          </article>
+          <article class="metric-card">
+            <p>总体风险分数</p>
+            <h3 id="overall-score">-</h3>
+          </article>
+          <article class="metric-card">
+            <p>总体置信度</p>
+            <h3 id="overall-confidence">-</h3>
+          </article>
+          <article class="metric-card">
+            <p>人工复核条目</p>
+            <h3 id="human-review-count">-</h3>
+          </article>
+        </div>
+
+        <div class="content-grid">
+          <section class="panel report-panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-kicker">高优先级</p>
+                <h2>Top 3 风险</h2>
+              </div>
+            </div>
+            <div id="top-risks" class="risk-card-grid"></div>
+          </section>
+
+          <section class="panel confidence-panel">
+            <div class="panel-head">
+              <div>
+                <p class="panel-kicker">可信度</p>
+                <h2>置信度拆解</h2>
+              </div>
+            </div>
+            <div id="confidence-breakdown" class="confidence-stack"></div>
+            <div id="gate-flags" class="gate-flags"></div>
+          </section>
+        </div>
+
+        <section class="panel lifecycle-panel">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">生命周期</p>
+              <h2>按阶段分组的风险清单</h2>
+            </div>
+          </div>
+          <div id="lifecycle-groups" class="lifecycle-groups"></div>
+        </section>
+
+        <section class="panel agent-panel">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">Agents</p>
+              <h2>每个 Agent 做了什么</h2>
+            </div>
+          </div>
+          <div id="agent-workbench" class="agent-workbench"></div>
+        </section>
+
+        <section id="debug-section" class="panel debug-panel">
+          <div class="panel-head">
+            <div>
+              <p class="panel-kicker">Debug</p>
+              <h2>中间过程快照</h2>
+            </div>
+          </div>
+          <div id="debug-cards" class="debug-cards"></div>
+        </section>
+      </section>
+    </div>
+
+    <script src="/assets/app.js"></script>
+  </body>
+</html>
