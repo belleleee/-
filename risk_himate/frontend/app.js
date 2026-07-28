@@ -39,6 +39,14 @@ function buildApiUrl(path) {
   return base ? `${base}${path}` : path;
 }
 
+function buildApiHeaders(extra = {}) {
+  const headers = { ...extra };
+  if (state.backendBaseUrl.includes("ngrok-free.dev")) {
+    headers["ngrok-skip-browser-warning"] = "true";
+  }
+  return headers;
+}
+
 function setHealthBadge(text, kind) {
   const badge = $("#health-badge");
   badge.textContent = text;
@@ -48,7 +56,9 @@ function setHealthBadge(text, kind) {
 async function fetchHealth() {
   setHealthBadge("检查中", "status-pending");
   try {
-    const response = await fetch(buildApiUrl("/health"));
+    const response = await fetch(buildApiUrl("/health"), {
+      headers: buildApiHeaders(),
+    });
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
@@ -517,9 +527,9 @@ async function submitAnalysis(event) {
   try {
     const response = await fetch(endpoint, {
       method: "POST",
-      headers: {
+      headers: buildApiHeaders({
         "Content-Type": "application/json",
-      },
+      }),
       body: JSON.stringify(payload),
     });
     const data = await response.json();
