@@ -1,9 +1,43 @@
 const state = {
   health: null,
   reportPayload: null,
+  backendBaseUrl: "",
 };
 
 const $ = (selector) => document.querySelector(selector);
+
+function normalizeBaseUrl(raw) {
+  const value = (raw || "").trim();
+  if (!value) {
+    return "";
+  }
+  return value.replace(/\/+$/, "");
+}
+
+function loadConfiguredBackendBaseUrl() {
+  const fromQuery = new URLSearchParams(window.location.search).get("apiBase");
+  const fromStorage = window.localStorage.getItem("risk_himate_backend_base_url");
+  return normalizeBaseUrl(fromQuery || fromStorage || "");
+}
+
+function saveConfiguredBackendBaseUrl(value) {
+  const normalized = normalizeBaseUrl(value);
+  state.backendBaseUrl = normalized;
+  if (normalized) {
+    window.localStorage.setItem("risk_himate_backend_base_url", normalized);
+  } else {
+    window.localStorage.removeItem("risk_himate_backend_base_url");
+  }
+  $("#backend-base-url").value = normalized;
+  $("#backend-url-hint").textContent = normalized
+    ? `当前前端会请求：${normalized}`
+    : "当前前端默认调用与页面同源的后端。若你在别的电脑上单独跑前端，请在这里填入后端地址。";
+}
+
+function buildApiUrl(path) {
+  const base = state.backendBaseUrl;
+  return base ? `${base}${path}` : path;
+}
 
 function setHealthBadge(text, kind) {
   const badge = $("#health-badge");
@@ -14,7 +48,7 @@ function setHealthBadge(text, kind) {
 async function fetchHealth() {
   setHealthBadge("检查中", "status-pending");
   try {
-    const response = await fetch("/health");
+    const response = await fetch(buildApiUrl("/health"));
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}`);
     }
@@ -478,7 +512,7 @@ async function submitAnalysis(event) {
     report_only: $("#report-only").checked,
   };
 
-  const endpoint = payload.report_only ? "/analyze/report-only" : "/analyze";
+  const endpoint = payload.report_only ? buildApiUrl("/analyze/report-only") : buildApiUrl("/analyze");
 
   try {
     const response = await fetch(endpoint, {
@@ -508,11 +542,20 @@ function bindEvents() {
   $("#load-demo").addEventListener("click", loadDemo);
   $("#refresh-health").addEventListener("click", fetchHealth);
   $("#analyze-form").addEventListener("submit", submitAnalysis);
+  $("#save-backend-url").addEventListener("click", () => {
+    saveConfiguredBackendBaseUrl($("#backend-base-url").value);
+    fetchHealth();
+  });
+  $("#reset-backend-url").addEventListener("click", () => {
+    saveConfiguredBackendBaseUrl("");
+    fetchHealth();
+  });
   $("#scroll-to-form").addEventListener("click", () => {
     $("#analysis-form").scrollIntoView({ behavior: "smooth", block: "start" });
   });
 }
 
+saveConfiguredBackendBaseUrl(loadConfiguredBackendBaseUrl());
 bindEvents();
 fetchHealth();
 loadDemo();

@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Risk-HiMATE Console</title>
-    <link rel="stylesheet" href="/assets/styles.css" />
+    <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
     <div class="page-shell">
@@ -18,6 +18,23 @@
           <div class="hero-actions">
             <button id="scroll-to-form" class="primary-button">开始分析</button>
             <button id="refresh-health" class="secondary-button">刷新后端状态</button>
+          </div>
+          <div class="backend-config">
+            <label class="field compact-field">
+              <span>后端地址</span>
+              <input
+                id="backend-base-url"
+                type="text"
+                placeholder="留空表示同源，例如 http://127.0.0.1:8000 或 https://xxxxx.ngrok-free.dev"
+              />
+            </label>
+            <div class="backend-config-actions">
+              <button id="save-backend-url" type="button" class="secondary-button">保存后端地址</button>
+              <button id="reset-backend-url" type="button" class="secondary-button">恢复同源</button>
+            </div>
+            <p id="backend-url-hint" class="backend-hint">
+              当前前端默认调用与页面同源的后端。若你在别的电脑上单独跑前端，请在这里填入后端地址。
+            </p>
           </div>
         </div>
         <aside class="hero-status">
@@ -240,6 +257,6 @@
       </section>
     </div>
 
-    <script src="/assets/app.js"></script>
+    <script src="app.js"></script>
   </body>
 </html>

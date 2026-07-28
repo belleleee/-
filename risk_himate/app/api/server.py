@@ -22,6 +22,7 @@ class ServerConfig:
         self.history_path = os.getenv("RISK_HIMATE_HISTORY_PATH")
         self.collector_mode = os.getenv("RISK_HIMATE_COLLECTOR", "auto")
         self.company_data_path = os.getenv("RISK_HIMATE_COMPANY_DATA_PATH")
+        self.cors_origins = os.getenv("RISK_HIMATE_CORS_ORIGINS", "*")
 
     def resolve_history_path(self) -> str | None:
         if self.history_path:
@@ -31,6 +32,14 @@ class ServerConfig:
         if self.history_store_kind == "sqlite":
             return str(Path("risk_himate/output/history_api.sqlite3"))
         return None
+
+    def resolve_cors_origins(self) -> list[str]:
+        raw = self.cors_origins.strip()
+        if not raw:
+            return ["*"]
+        if raw == "*":
+            return ["*"]
+        return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
 
 CONFIG = ServerConfig()
@@ -96,6 +105,7 @@ FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 def create_app():
     try:
         from fastapi import FastAPI, HTTPException
+        from fastapi.middleware.cors import CORSMiddleware
         from fastapi.responses import FileResponse
         from fastapi.staticfiles import StaticFiles
     except ModuleNotFoundError as exc:
@@ -110,12 +120,28 @@ def create_app():
         description="LangGraph-native multi-agent risk analysis backend for sci-tech enterprises.",
     )
 
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=CONFIG.resolve_cors_origins(),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     if FRONTEND_DIR.exists():
         app.mount("/assets", StaticFiles(directory=FRONTEND_DIR), name="assets")
 
         @app.get("/", include_in_schema=False)
         def frontend_index():
             return FileResponse(FRONTEND_DIR / "index.html")
+
+        @app.get("/styles.css", include_in_schema=False)
+        def frontend_styles():
+            return FileResponse(FRONTEND_DIR / "styles.css")
+
+        @app.get("/app.js", include_in_schema=False)
+        def frontend_script():
+            return FileResponse(FRONTEND_DIR / "app.js")
 
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
